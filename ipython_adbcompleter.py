@@ -85,9 +85,12 @@ def adb_glob(pathname):
         pathbase = pathname[:pathname.rfind('/')]
         filename = pathname[pathname.rfind('/') + 1:]
 
-        files = subprocess.check_output('adb shell ls %s' % pathbase, shell=True).splitlines()
-        if len(files) > 1 or (files[0] != "opendir failed, Permission denied" and not files[0].endswith('No such file or directory')):
-            paths.extend(pathbase + '/' + f for f in files if f.startswith(filename))
+        try:
+            files = subprocess.check_output('adb shell ls %s' % pathbase, shell=True, stderr=subprocess.STDOUT).splitlines()
+            if len(files) > 1 or (files[0] != 'error: device not found' and files[0] != "opendir failed, Permission denied" and not files[0].endswith('No such file or directory')):
+                paths.extend(pathbase + '/' + f for f in files if f.startswith(filename))
+        except Exception:
+            pass
 
     return paths
 
