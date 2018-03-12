@@ -21,7 +21,7 @@ Amazing! This will save me so much time!
 
 # Install
 Use pip like this:
-`pip install https://github.com/drorspei/ipython-adbcompleter`
+`pip install git+https://github.com/drorspei/ipython-adbcompleter`
 
 Then add the following lines to your `ipython_config.py` file (usually in `~/.ipython/profile_default/`):
 ```
