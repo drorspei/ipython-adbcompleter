@@ -4,10 +4,7 @@ To activate, pip-install and append the output of `ipython -m ipython_adbcomplet
 to `~/.ipython/profile_default/ipython_config.py`.
 """
 import os
-import re
 import subprocess
-from glob import glob
-from IPython.core.magic import register_line_magic
 
 
 try:
@@ -19,12 +16,11 @@ else:
     __version__ = _ipython_adbcompleter_version.get_versions()["version"]
 
 
-def protect_filename(txt):
-    return txt.replace(" ", "\\ ")
-
-
 def adb_completer(self, event):
-    subs = event.text_until_cursor[event.text_until_cursor.find('adb ') + 4:]   # type: str
+    """
+    A simple completer that returns the arguments that adb accepts
+    """
+    subs = event.text_until_cursor[event.text_until_cursor.find('adb ') + 4:]
 
     if ' ' not in subs:
         return [
@@ -78,6 +74,11 @@ _enabled = False
 
 
 def adb_glob(pathname):
+    """
+    Replacement glob that also searches on connected device
+
+    The path must start with '/'.
+    """
     paths = list(_original_glob(pathname))
 
     if _enabled and pathname.endswith('*') and pathname.startswith('/'):
@@ -96,14 +97,19 @@ def adb_glob(pathname):
 
 
 if __name__ != "__main__":
+    from IPython.core.magic import register_line_magic
+
     @register_line_magic
     def adb(arg):
+        """Conveniance magic for running adb"""
         os.system('adb %s' % arg)
 
 
 def load_ipython_extension(ipython):
     """
-    @type ipython: IPython.terminal.interactiveshell.TerminalInteractiveShell
+    Load the extension.
+
+    This replace the default completer's `glob` reference with a function that also searches on a connected device.
     """
     global _original_glob, _enabled
     _enabled = True
@@ -113,25 +119,16 @@ def load_ipython_extension(ipython):
 
 
 def unload_ipython_extension(ipython):
+    """
+    Unload the extension
+
+    We can't just replace the glob function back, since maybe someone else replaced the glob after us. So we just disable the adb part.
+    """
     global _original_glob, _enabled
     _enabled = False
 
 
-def test_adbcompleter():
-    def make_event(txt):
-        class event:
-            text_until_cursor = txt
-        return event
-
-    print adb_completer(None, make_event("adb pull /tmp /home/"))
-    print adb_completer(None, make_event("adb pull /tmp \"/home/"))
-    print adb_completer(None, make_event("adb pull \"/tmp\" \"/home/"))
-    print adb_completer(None, make_event("adb push \"/home/"))
-    print adb_completer(None, make_event("adb push /home/"))
-
-
 if __name__ == "__main__":
-    # test_adbcompleter()
     import sys
 
     if os.isatty(sys.stdout.fileno()):
