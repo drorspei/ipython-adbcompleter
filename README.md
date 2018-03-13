@@ -26,5 +26,5 @@ Use pip like this:
 Then add the following lines to your `ipython_config.py` file (usually in `~/.ipython/profile_default/`):
 ```
 c.InteractiveShellApp.exec_lines.append(
-    "try:\\n    %load_ext ipython_adbcompleter\\nexcept ImportError: pass")
+    "try:\n    %load_ext ipython_adbcompleter\nexcept ImportError: pass")
 ```
