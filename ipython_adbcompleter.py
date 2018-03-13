@@ -79,6 +79,7 @@ def adb_glob(pathname):
 
     The path must start with '/'.
     """
+    print "here:", pathname
     paths = list(_original_glob(pathname))
 
     if _enabled and pathname.endswith('*') and pathname.startswith('/'):
@@ -88,10 +89,19 @@ def adb_glob(pathname):
 
         try:
             files = subprocess.check_output('adb shell ls %s' % pathbase, shell=True, stderr=subprocess.STDOUT).splitlines()
-            if len(files) > 1 or (files[0] != 'error: device not found' and files[0] != "opendir failed, Permission denied" and not files[0].endswith('No such file or directory')):
-                paths.extend(pathbase + '/' + f for f in files if f.startswith(filename))
         except Exception:
-            pass
+            files = []
+        
+        if (len(files) > 1 or 
+            (len(files) == 1 and files[0] != 'error: device not found' and 
+             files[0] != "opendir failed, Permission denied" and 
+             not files[0].endswith('No such file or directory'))):
+            for f in files:
+                try:
+                    if f.startswith(filename):
+                        paths.append(pathbase + '/' + f)
+                except Exception:
+                    pass
 
     return paths
 
