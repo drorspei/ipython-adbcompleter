@@ -79,7 +79,6 @@ def adb_glob(pathname):
 
     The path must start with '/'.
     """
-    print "here:", pathname
     paths = list(_original_glob(pathname))
 
     if _enabled and pathname.endswith('*') and pathname.startswith('/'):
