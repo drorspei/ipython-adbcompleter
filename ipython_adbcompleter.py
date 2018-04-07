@@ -4,6 +4,7 @@ To activate, pip-install and append the output of `ipython -m ipython_adbcomplet
 to `~/.ipython/profile_default/ipython_config.py`.
 """
 import os
+import re
 import subprocess
 
 
@@ -16,17 +17,34 @@ else:
     __version__ = _ipython_adbcompleter_version.get_versions()["version"]
 
 
+def slash_chr(s, c):
+    sc = '\\%c' % c
+    return sc.join(ss.replace(c, sc) for ss in s.split(sc))
+
+def unslash_chr(s, c):
+    sc = '\\%c' % c
+    while True:
+        s2 = s.replace(sc, c)
+        if s != s2:
+            return s2
+        s = s2
+
+
 def adb_completer(self, event):
     """
     A simple completer that returns the arguments that adb accepts
     """
+    adb_completer.event = event
     subs = event.text_until_cursor[event.text_until_cursor.find('adb ') + 4:]
 
-    if ' ' not in subs:
+    if re.match(r"(^|^.*\s)-s\s+[^\s]*$", subs):
+        return adb_devices()
+    elif re.match(r"^(-s [^\s]*\s+)?[^\s]*$", subs):
         return [
             '-a',
             '-d',
             '-e',
+            '--help',
             '-s',
             '-p',
             '-H',
@@ -65,44 +83,80 @@ def adb_completer(self, event):
             'tcpip',
             'ppp',
         ]
-    else:
-        return []
+
+    pathname = None
+
+    for nr, pattern, in_quotes in [
+        (3, r"^(-s ([^\s]*)\s+)?pull\s+(([^\s\"']|(?<=\\)[ \"'])*)$", False),
+        (3, r"^(-s ([^\s]*)\s+)?pull\s+\"(([^\"]|(?<=\\)\")*)$", True),
+        (5, r"^(-s ([^\s]*)\s+)?push\s+\"(([^\"]|(?<=\\)\")*)\"\s+(([^\s\"']|(?<=\\)[ \"'])*)$", False),
+        (5, r"^(-s ([^\s]*)\s+)?push\s+(([^\s\"']|(?<=\\)[ \"'])*)\s+(([^\s\"']|(?<=\\)[ \"'])*)$", False),
+        (5, r"^(-s ([^\s]*)\s+)?push\s+(([^\s\"']|(?<=\\)[ \"'])*)\s+\"(([^\"]|(?<=\\)\")*)$", True),
+        (5, r"^(-s ([^\s]*)\s+)?push\s+\"(([^\"]|(?<=\\)\")*)\"\s+\"(([^\"]|(?<=\\)\")*)$", True)
+        ]:
+        m = re.match(pattern, subs)
+        if m:
+            pathname = m.group(nr)
+            res = [slash_chr(slash_chr(slash_chr(s, '"'), "'"), ' ') for s in parse_and_ls(pathname, m.group(1))]
+
+            if not in_quotes:
+                res = [slash_chr(s, ' ') for s in res]
+
+            return [p[len(pathname) - len(event.symbol):] for p in res]
+    
+    return []
 
 
-_original_glob = None
 _enabled = False
 
 
-def adb_glob(pathname):
-    """
-    Replacement glob that also searches on connected device
+def parse_and_ls(pathname, device):
+    if pathname.endswith('/'):
+        return shell_ls(pathname, '', device)
+    else:
+        last_slash = pathname.rfind('/')
+        if last_slash == -1:
+            return [f[1:] for f in shell_ls('/', pathname, device)]
+        else:
+            return shell_ls(pathname[:pathname.rfind('/') + 1], pathname[pathname.rfind('/') + 1:], device)
 
-    The path must start with '/'.
-    """
-    paths = list(_original_glob(pathname))
 
-    if _enabled and pathname.endswith('*') and pathname.startswith('/'):
-        pathname = pathname[:-1]
-        pathbase = pathname[:pathname.rfind('/')]
-        filename = pathname[pathname.rfind('/') + 1:]
-
-        try:
-            files = subprocess.check_output('adb shell ls %s' % pathbase, shell=True, stderr=subprocess.STDOUT).splitlines()
-        except Exception:
-            files = []
-        
-        if (len(files) > 1 or 
-            (len(files) == 1 and files[0] != 'error: device not found' and 
-             files[0] != "opendir failed, Permission denied" and 
-             not files[0].endswith('No such file or directory'))):
-            for f in files:
-                try:
-                    if f.startswith(filename):
-                        paths.append(pathbase + '/' + f)
-                except Exception:
-                    pass
+def shell_ls(pathbase, filename, device):
+    if device is None:
+        device = ''
+    try:
+        files = subprocess.check_output('adb %sshell ls "%s"' % (device, pathbase), shell=True, stderr=subprocess.STDOUT).splitlines()
+    except Exception:
+        return []
+    
+    paths = []
+    if (len(files) > 1 or 
+        (len(files) == 1 and files[0] != 'error: device not found' and 
+            files[0] != "opendir failed, Permission denied" and 
+            not files[0].endswith('No such file or directory'))):
+        for f in files:
+            try:
+                if f.startswith(filename):
+                    paths.append('%s%s%s' % (pathbase, '' if pathbase.endswith('/') else  '/', f))
+            except Exception:
+                pass
 
     return paths
+
+
+def adb_devices():
+    try:
+        lines = [line for line in subprocess.check_output('adb devices', shell=True, stderr=subprocess.STDOUT).splitlines() if line]
+    except Exception:
+        return []
+
+    if len(lines) <= 1 or lines[0] != 'List of devices attached':
+        return []
+
+    lines = lines[1:]
+    devices = [line.split()[0] for line in lines]
+
+    return devices
 
 
 if __name__ != "__main__":
@@ -117,23 +171,17 @@ if __name__ != "__main__":
 def load_ipython_extension(ipython):
     """
     Load the extension.
-
-    This replace the default completer's `glob` reference with a function that also searches on a connected device.
     """
-    global _original_glob, _enabled
+    global _enabled
     _enabled = True
-    _original_glob = ipython.Completer.glob
-    ipython.Completer.glob = adb_glob
     ipython.set_hook('complete_command', adb_completer, re_key='.*adb ')
 
 
 def unload_ipython_extension(ipython):
     """
     Unload the extension
-
-    We can't just replace the glob function back, since maybe someone else replaced the glob after us. So we just disable the adb part.
     """
-    global _original_glob, _enabled
+    global _enabled
     _enabled = False
 
 
