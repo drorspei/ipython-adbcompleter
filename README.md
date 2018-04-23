@@ -22,7 +22,7 @@ Amazing! This will save me so much time!
 Notes:
 1. The android path must start with `/`. This is to reduce queries to the phone when you want a path on your computer.
 2. Unicode characters in paths mess up my ipython, so for now adbcompleter just skips them.
-3. adbcompleter currently only supports a single connected device.
+3. adbcompleter now supports multiple connected devices!
 
 # Install
 Use pip like this:
